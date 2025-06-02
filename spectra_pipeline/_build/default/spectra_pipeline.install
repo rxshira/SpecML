@@ -1,0 +1,8 @@
+lib: [
+  "_build/install/default/lib/spectra_pipeline/META"
+  "_build/install/default/lib/spectra_pipeline/dune-package"
+  "_build/install/default/lib/spectra_pipeline/opam"
+]
+bin: [
+  "_build/install/default/bin/spectra_pipeline"
+]

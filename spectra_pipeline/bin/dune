@@ -1,0 +1,4 @@
+(executable
+ (public_name spectra_pipeline)
+ (name main)
+ (libraries spectra_pipeline))
