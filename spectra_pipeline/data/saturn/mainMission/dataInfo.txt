@@ -1,0 +1,32 @@
+PDS Image Atlas Data Info:
+
+ALL MAIN MISSION:
+
+(x) ATLAS_MISSION_NAME:cassini
+(x) TARGET:saturn
+(x) ATLAS_INSTRUMENT_NAME:vims
+(x) START_TIME:[2004-07-01T00:00:00Z TO 2010-09-15T23:59:59Z]
+
+============
+
+Mini Date Splits for Main Mission (2004–2010) — manageable chunks:
+
+Season 1: Jul 2004 – Dec 2005 (1.5 years)
+(x) ATLAS_MISSION_NAME:cassini
+(x) TARGET:saturn
+(x) ATLAS_INSTRUMENT_NAME:vims
+(x) START_TIME:[2004-07-1T00:00:00Z TO 2005-12-31T23:59:59Z]
+
+Season 2: Jan 2006 – Dec 2007 (2 years)
+
+NOT DOWNLOADED
+
+Season 3: Jan 2008 – Dec 2009 (2 years)
+
+NOT DOWNLOADED
+
+Season 4: Jan 2010 – Sep 2010 (9 months, final stretch)
+
+NOT DOWNLOADED`
+
+
