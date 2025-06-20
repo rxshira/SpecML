@@ -230,6 +230,7 @@ let run_export () =
 
 
 (****************************************************)
+
 (*define the metadata type with all essential fields*)
 
 (*ALL type definitions are always in the begining of the file*)
@@ -388,25 +389,29 @@ let detect_elements (bands : float array) : string list =
   ) [] table
 
 
-(* Write metadata to CSV file *)
-let write_csv (metadata : label_metadata list) (path : string) =
-  let oc = open_out path in
-  Printf.fprintf oc "Filename,Lines,Line Samples,Bands,First Band (µm),Last Band (µm),Possible Elements\n";
+(* Group files by detected elements and print grouped CSVs *)
+let write_grouped_csv (metadata : label_metadata list) =
+  let element_map = Hashtbl.create 10 in
   List.iter (fun m ->
-    let first_band = if Array.length m.band_bin_center > 0 then string_of_float m.band_bin_center.(0) else "" in
-    let last_band = if Array.length m.band_bin_center > 0 then string_of_float m.band_bin_center.(Array.length m.band_bin_center - 1) else "" in
-    let elements =
-        let () =
-            Printf.printf "DEBUG: running detect_elements for %s with %d bands\n"
-            m.filename (Array.length m.band_bin_center)
-        in
-        detect_elements m.band_bin_center |> String.concat ";"
-    in
-
-    Printf.fprintf oc "%s,%d,%d,%d,%s,%s,%s\n"
-      m.filename m.lines m.line_samples m.bands first_band last_band elements
+    let elements = detect_elements m.band_bin_center in
+    List.iter (fun el ->
+      let existing = Hashtbl.find_opt element_map el |> Option.value ~default:[] in
+      Hashtbl.replace element_map el (m :: existing)
+    ) elements
   ) metadata;
-  close_out oc
+  Hashtbl.iter (fun el files ->
+    let filename = Printf.sprintf "element_%s.csv" (String.map (fun c -> if c = ' ' || c = '(' || c = ')' then '_' else c) el) in
+    let oc = open_out filename in
+    Printf.fprintf oc "Filename,Lines,Line Samples,Bands,First Band (µm),Last Band (µm),Possible Elements\n";
+    List.iter (fun m ->
+      let first_band = if Array.length m.band_bin_center > 0 then string_of_float m.band_bin_center.(0) else "" in
+      let last_band = if Array.length m.band_bin_center > 0 then string_of_float m.band_bin_center.(Array.length m.band_bin_center - 1) else "" in
+      let elements = detect_elements m.band_bin_center |> String.concat ";" in
+      Printf.fprintf oc "%s,%d,%d,%d,%s,%s,%s\n"
+        m.filename m.lines m.line_samples m.bands first_band last_band elements
+    ) files;
+    close_out oc
+  ) element_map
 
 let run_export () =
   Printf.printf "🚨 run_export started 🚨\n";
@@ -414,9 +419,8 @@ let run_export () =
     let parsed = parse_all_labels () in
     let valid = List.filter_map (fun (file, kvs) -> extract_metadata file kvs) parsed in
     Printf.printf "Parsed %d files, valid metadata: %d\n" (List.length parsed) (List.length valid);
-    write_csv valid "spectral_metadata.csv";
-    Printf.printf "✔ Exported %d files to spectral_metadata.csv\n" (List.length valid);
+    write_grouped_csv valid;
+    Printf.printf "✔ Exported grouped element files\n";
     Printf.printf "❌ Skipped %d files\n" !skipped_files
   with e ->
     Printf.eprintf "Exception during export: %s\n" (Printexc.to_string e)
-
