@@ -91,6 +91,7 @@ let extract_metadata (file : string) (pairs : (string * string) list) : label_me
 
   if core_items_raw = "" then (
     Printf.eprintf "Skipping %s: missing CORE_ITEMS\n" file;
+    skipped_files := !skipped_files + 1;
     None
   ) else
     try
@@ -114,6 +115,7 @@ let extract_metadata (file : string) (pairs : (string * string) list) : label_me
       }
     with _ ->
       Printf.eprintf "Skipping %s due to malformed CORE_ITEMS: %s\n" file core_items_raw;
+      skipped_files := !skipped_files + 1;
       None
 
 (***************)
@@ -121,7 +123,9 @@ let extract_metadata (file : string) (pairs : (string * string) list) : label_me
 (* CSV export *)
 
 (* Element detection based on spectral ranges *)
+
 let detect_elements (bands : float array) : string list =
+  Printf.printf "DEBUG detect_elements: bands length = %d\n" (Array.length bands);
   let has_range low high =
     Array.exists (fun b -> b >= low && b <= high) bands
   in
@@ -134,8 +138,12 @@ let detect_elements (bands : float array) : string list =
     ("Sulfur Dioxide (SO₂)", (4.0, 4.2));
   ] in
   List.fold_left (fun acc (name, (low, high)) ->
-    if has_range low high then name :: acc else acc
+    if has_range low high then (
+      Printf.printf "Element detected: %s in range %.2f-%.2f\n" name low high;
+      name :: acc
+    ) else acc
   ) [] table
+
 
 (* Write metadata to CSV file *)
 let write_csv (metadata : label_metadata list) (path : string) =
