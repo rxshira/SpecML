@@ -1,4 +1,7 @@
 (*define the metadata type with all essential fields*)
+
+(*ALL type definitions are always in the begining of the file*)
+
 type label_metadata = {
   filename : string;
   lines : int;
@@ -12,6 +15,11 @@ type label_metadata = {
   data_offset : int;
   band_bin_center : float array;  (* new spectral axis field *)
 }
+
+(************)
+
+
+let skipped_files = ref 0
 
 (*location of qub and lbl files on my device*)
 
@@ -108,77 +116,43 @@ let extract_metadata (file : string) (pairs : (string * string) list) : label_me
       Printf.eprintf "Skipping %s due to malformed CORE_ITEMS: %s\n" file core_items_raw;
       None
 
+(***************)
 
+(* CSV export *)
 
-(*
-
-
-let parse_lbl_file filepath =
-  let ic = open_in filepath in
-  let result = parse_lbl ic [] in
-  close_in ic;
-  result
-
-let parse_all_labels () : (string * (string * string) list) list =
-  list_label_files ()
-  |> List.map (fun filepath ->
-      let parsed = parse_lbl_file filepath in
-      (filepath, parsed))
-
-(*helper to parse a string "(1,2,3)" into a tuple of ints*)
-let parse_core_items s =
-  try Scanf.sscanf s "(%d,%d,%d)" (fun a b c -> (a,b,c))
-  with _ -> failwith ("Malformed CORE_ITEMS: " ^ s)
-
-(*helper to parse BAND_BIN_CENTER as float array*)
-let parse_float_array str =
-  let cleaned =
-    str
-    |> String.trim
-    |> fun s ->
-      if String.length s >= 2 && s.[0] = '(' && s.[String.length s - 1] = ')'
-      then String.sub s 1 (String.length s - 2)
-      else s
+(* Element detection based on spectral ranges *)
+let detect_elements (bands : float array) : string list =
+  let has_range low high =
+    Array.exists (fun b -> b >= low && b <= high) bands
   in
-  cleaned
-  |> String.split_on_char ','
-  |> List.map String.trim
-  |> List.map float_of_string
-  |> Array.of_list
+  let table = [
+    ("Water (H₂O)", (1.4, 1.5));
+    ("Methane (CH₄)", (2.2, 2.4));
+    ("Carbon Dioxide (CO₂)", (1.9, 2.1));
+    ("Ammonia (NH₃)", (2.0, 2.3));
+    ("Hydrogen Sulfide (H₂S)", (3.9, 4.1));
+    ("Sulfur Dioxide (SO₂)", (4.0, 4.2));
+  ] in
+  List.fold_left (fun acc (name, (low, high)) ->
+    if has_range low high then name :: acc else acc
+  ) [] table
 
-(*extract metadata record from pairs*)
-let extract_metadata (file : string) (pairs : (string * string) list) : label_metadata =
-  let get key = List.assoc_opt key pairs |> Option.value ~default:"" |> String.trim in
-  let get_int key = int_of_string (get key) in
-  let get_float key = float_of_string (get key) in
+(* Write metadata to CSV file *)
+let write_csv (metadata : label_metadata list) (path : string) =
+  let oc = open_out path in
+  Printf.fprintf oc "Filename,Lines,Line Samples,Bands,First Band (µm),Last Band (µm),Possible Elements\n";
+  List.iter (fun m ->
+    let first_band = if Array.length m.band_bin_center > 0 then string_of_float m.band_bin_center.(0) else "" in
+    let last_band = if Array.length m.band_bin_center > 0 then string_of_float m.band_bin_center.(Array.length m.band_bin_center - 1) else "" in
+    let elements = detect_elements m.band_bin_center |> String.concat ";" in
+    Printf.fprintf oc "%s,%d,%d,%d,%s,%s,%s\n"
+      m.filename m.lines m.line_samples m.bands first_band last_band elements
+  ) metadata;
+  close_out oc
 
-  let filename = Filename.basename file in
-  let sample, band, line = parse_core_items (get "CORE_ITEMS") in
-
-  let data_filename, data_offset =
-    try
-      Scanf.sscanf (get "^QUBE") "(\"%s\", %d)" (fun f o -> (f, o))
-    with _ ->
-      failwith ("Malformed ^QUBE field in " ^ filename)
-  in
-
-  let band_bin_center =
-    try parse_float_array (get "BAND_BIN_CENTER")
-    with _ -> [||]
-  in
-
-  {
-    filename;
-    lines = line;
-    line_samples = sample;
-    bands = band;
-    sample_type = get "CORE_ITEM_TYPE";
-    sample_bits = get_int "CORE_ITEM_BYTES" * 8;
-    core_base = get_float "CORE_BASE";
-    core_multiplier = get_float "CORE_MULTIPLIER";
-    data_filename;
-    data_offset;
-    band_bin_center;
-  }
-
-*)
+let run_export () =
+  let parsed = parse_all_labels () in
+  let valid = List.filter_map (fun (file, kvs) -> extract_metadata file kvs) parsed in
+  write_csv valid "spectral_metadata.csv";
+  Printf.printf "✔ Exported %d files to spectral_metadata.csv\n" (List.length valid);
+  Printf.printf "❌ Skipped %d files\n" !skipped_files
