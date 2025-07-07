@@ -1,24 +1,19 @@
-(* open Spectra_pipeline *)
-(*
 let () =
-  let parsed = Spectra_pipeline.parse_all_labels () in
-  let count = ref 0 in
-  let skipped = ref 0 in
-  List.iter (fun (file, pairs) ->
-    match Spectra_pipeline.extract_metadata file pairs with
-    | Some m ->
-        incr count;
-        let first_band =
-          if Array.length m.band_bin_center > 0 then m.band_bin_center.(0)
-          else nan
-        in
-        Printf.printf "Parsed %s: %dx%dx%d bands, first band @ %.2f µm\n"
-          m.filename m.line_samples m.bands m.lines first_band
-    | None -> incr skipped
-  ) parsed;
-  Printf.printf "\n✔ Parsed %d files, ❌ Skipped %d files\n" !count !skipped
-*)
-
-let () =
-  Spectra_pipeline.run_export ()
-
+  Printf.printf "🔍 SPECML debug mode\n";
+  let files = Spectra_pipeline.debug_get_lbl_files () in
+  Printf.printf "found %d .lbl files\n" (List.length files);
+  
+  (* Test the first file *)
+  let first_file = List.hd files in
+  Printf.printf "testing file: %s\n" first_file;
+  
+  (* Read raw file contents *)
+  let ic = open_in first_file in
+  Printf.printf "first 10 lines:\n";
+  for i = 1 to 10 do
+    try
+      let line = input_line ic in
+      Printf.printf "%d: %s\n" i line
+    with End_of_file -> Printf.printf "end of file at line %d\n" i
+  done;
+  close_in ic
