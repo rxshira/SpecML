@@ -61,7 +61,7 @@ let parse_core_items s =
     Scanf.sscanf s "(%d,%d,%d)" (fun a b c -> Some (a, b, c))
   with _ -> None
 
-let debug_get_lbl_files () =
+let get_lbl_files () =
   let all_files = Sys.readdir data_dir |> Array.to_list in
   Printf.printf "all files count: %d\n" (List.length all_files);
   let lbl_files = List.filter (fun f ->
@@ -250,7 +250,7 @@ let rec export_all_csvs = function
 (* pure pipeline composition *)
 let run_pipeline () =
   Printf.printf "starting SPECML pipeline...\n";
-  let files = debug_get_lbl_files () in
+  let files = get_lbl_files () in
   let samples = process_files files in
   let valid = filter_valid samples in
   let classified = classify_all valid in
