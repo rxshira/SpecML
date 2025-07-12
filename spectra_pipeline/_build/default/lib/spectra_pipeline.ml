@@ -1,7 +1,5 @@
 (* SPECML hyperspectral analysis - Shira Rubin 2025 *)
 
-(* SPECML hyperspectral analysis - purely functional *)
-
 type element = H2O | CH4 | CO2 | NH3 | H2S | SO2 | Unknown of string
 
 type sample = {
@@ -73,26 +71,57 @@ let get_lbl_files () =
   (* ADD THIS LINE - map to full paths *)
   List.map (Filename.concat data_dir) lbl_files
 
-(* pure recursive lbl parsing *)
+(* Fixed multi-line parser for Grand Finale data *)
 let parse_lbl_file filename =
-  let rec read_lines ic acc =
+  let rec read_lines ic acc current_key current_value =
     match input_line ic with
     | line ->
       let line = String.trim line in
       if String.contains line '=' then
-        match String.split_on_char '=' line with
-        | [key; value] -> read_lines ic ((String.trim key, String.trim value) :: acc)
-        | _ -> read_lines ic acc
-      else read_lines ic acc
-    | exception End_of_file -> List.rev acc in
+        (* New key-value pair *)
+        let final_acc = match current_key, current_value with
+          | Some k, Some v -> (k, v) :: acc
+          | _ -> acc in
+        (match String.split_on_char '=' line with
+        | [key; value] -> 
+          let key = String.trim key in
+          let value = String.trim value in
+          (* Check if value continues on next line (ends with comma) *)
+          if String.ends_with ~suffix:"," value then
+            read_lines ic final_acc (Some key) (Some value)
+          else
+            read_lines ic ((key, value) :: final_acc) None None
+        | _ -> read_lines ic final_acc None None)
+      else if current_key <> None && current_value <> None then
+        (* Continuation line *)
+        let trimmed = String.trim line in
+        let new_value = match current_value with
+          | Some v -> Some (v ^ trimmed)
+          | None -> Some trimmed in
+        if String.ends_with ~suffix:")" trimmed || not (String.ends_with ~suffix:"," trimmed) then
+          (* End of multi-line value *)
+          let final_acc = match current_key, new_value with
+            | Some k, Some v -> (k, v) :: acc
+            | _ -> acc in
+          read_lines ic final_acc None None
+        else
+          (* Continue reading *)
+          read_lines ic acc current_key new_value
+      else
+        read_lines ic acc current_key current_value
+    | exception End_of_file -> 
+      (* Handle any remaining key-value pair *)
+      match current_key, current_value with
+      | Some k, Some v -> List.rev ((k, v) :: acc)
+      | _ -> List.rev acc in
   
   try
     let ic = open_in filename in
-    let result = read_lines ic [] in
+    let result = read_lines ic [] None None in
     close_in ic;
     Some result
   with _ -> None
-
+  
 (* pure recursive key lookup *)
 let rec find_key key = function
   | [] -> None
