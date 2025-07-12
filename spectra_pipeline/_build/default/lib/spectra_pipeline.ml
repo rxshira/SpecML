@@ -24,7 +24,7 @@ type classification = {
   confidence : float option;
 }
 
-let data_dir = "/Users/mjulia/Documents/specMLData/saturn/mainMission/season1"
+let data_dir = "/Users/mjulia/Documents/specMLData/saturn/finale"
 
 (* pure safe parsing *)
 let safe_int s =
