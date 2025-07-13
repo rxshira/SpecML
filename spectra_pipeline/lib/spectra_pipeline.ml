@@ -1,4 +1,4 @@
-(* SPECML hyperspectral analysis - Shira Rubin 2025 *)
+(* SPECML with lazy Seq streams - Shira Rubin 2025 *)
 
 type element = H2O | CH4 | CO2 | NH3 | H2S | SO2 | Unknown of string
 
@@ -24,14 +24,14 @@ type classification = {
 
 let data_dir = "/Users/mjulia/Documents/specMLData/saturn/finale"
 
-(* pure safe parsing *)
+(* safe parsing *)
 let safe_int s =
   try Some (int_of_string (String.trim s)) with _ -> None
 
 let safe_float s =
   try Some (float_of_string (String.trim s)) with _ -> None
 
-(* pure recursive band parsing *)
+(* recursive band parsing *)
 let parse_bands str =
   let clean_parens s =
     if String.length s >= 2 && s.[0] = '(' && s.[String.length s - 1] = ')' 
@@ -59,26 +59,25 @@ let parse_core_items s =
     Scanf.sscanf s "(%d,%d,%d)" (fun a b c -> Some (a, b, c))
   with _ -> None
 
-let get_lbl_files () =
+(* lazy stream of .lbl files *)
+let lbl_files_seq () =
   let all_files = Sys.readdir data_dir |> Array.to_list in
   Printf.printf "all files count: %d\n" (List.length all_files);
-  let lbl_files = List.filter (fun f ->
+  all_files
+  |> List.to_seq
+  |> Seq.filter (fun f ->
     let result = Filename.check_suffix f ".lbl" || Filename.check_suffix f ".qub.lbl" in
     if result then Printf.printf "matched: %s\n" f;
-    result
-  ) all_files in
-  Printf.printf "filtered lbl files: %d\n" (List.length lbl_files);
-  (* ADD THIS LINE - map to full paths *)
-  List.map (Filename.concat data_dir) lbl_files
+    result)
+  |> Seq.map (Filename.concat data_dir)
 
-(* Fixed multi-line parser for Grand Finale data *)
+(* fixed multi-line parser *)
 let parse_lbl_file filename =
   let rec read_lines ic acc current_key current_value =
     match input_line ic with
     | line ->
       let line = String.trim line in
       if String.contains line '=' then
-        (* New key-value pair *)
         let final_acc = match current_key, current_value with
           | Some k, Some v -> (k, v) :: acc
           | _ -> acc in
@@ -86,31 +85,26 @@ let parse_lbl_file filename =
         | [key; value] -> 
           let key = String.trim key in
           let value = String.trim value in
-          (* Check if value continues on next line (ends with comma) *)
           if String.ends_with ~suffix:"," value then
             read_lines ic final_acc (Some key) (Some value)
           else
             read_lines ic ((key, value) :: final_acc) None None
         | _ -> read_lines ic final_acc None None)
       else if current_key <> None && current_value <> None then
-        (* Continuation line *)
         let trimmed = String.trim line in
         let new_value = match current_value with
           | Some v -> Some (v ^ trimmed)
           | None -> Some trimmed in
         if String.ends_with ~suffix:")" trimmed || not (String.ends_with ~suffix:"," trimmed) then
-          (* End of multi-line value *)
           let final_acc = match current_key, new_value with
             | Some k, Some v -> (k, v) :: acc
             | _ -> acc in
           read_lines ic final_acc None None
         else
-          (* Continue reading *)
           read_lines ic acc current_key new_value
       else
         read_lines ic acc current_key current_value
     | exception End_of_file -> 
-      (* Handle any remaining key-value pair *)
       match current_key, current_value with
       | Some k, Some v -> List.rev ((k, v) :: acc)
       | _ -> List.rev acc in
@@ -121,8 +115,9 @@ let parse_lbl_file filename =
     close_in ic;
     Some result
   with _ -> None
-  
-(* pure recursive key lookup *)
+
+(* key lookup *)
+
 let rec find_key key = function
   | [] -> None
   | (k, v) :: t -> 
@@ -130,7 +125,8 @@ let rec find_key key = function
     then Some v 
     else find_key key t
 
-(* pure metadata extraction *)
+(* metadata extraction *)
+
 let extract_metadata filename pairs =
   let get = find_key in
   match get "CORE_ITEMS" pairs with
@@ -155,29 +151,26 @@ let extract_metadata filename pairs =
         band_bin_center = Option.bind (get "BAND_BIN_CENTER" pairs) parse_bands;
       }
 
-(* pure recursive sample processing *)
-let rec process_files = function
-  | [] -> []
-  | filename :: rest ->
-    let result = match parse_lbl_file filename with
-      | None -> None
-      | Some pairs -> extract_metadata filename pairs in
-    match result with
-    | None -> process_files rest
-    | Some sample -> sample :: process_files rest
+(* lazy stream of parsed samples *)
 
-(* pure sample filtering *)
-let rec filter_valid = function
-  | [] -> []
-  | sample :: rest ->
-    let is_valid = match sample.band_bin_center with 
-      | Some bands -> Array.length bands > 0
-      | None -> false in
-    if is_valid 
-    then sample :: filter_valid rest
-    else filter_valid rest
+let samples_seq () =
+  lbl_files_seq ()
+  |> Seq.filter_map (fun filename ->
+    match parse_lbl_file filename with
+    | None -> None
+    | Some pairs -> extract_metadata filename pairs)
 
-(* pure element detection *)
+(* lazy stream of valid samples *)
+
+let valid_samples_seq () =
+  samples_seq ()
+  |> Seq.filter (fun sample ->
+    match sample.band_bin_center with 
+    | Some bands -> Array.length bands > 0
+    | None -> false)
+
+(* element detection *)
+
 let detect_elements bands_opt =
   let has_range bands low hi = 
     let rec check_bands i =
@@ -201,41 +194,36 @@ let detect_elements bands_opt =
         else check_elements acc rest in
     check_elements [] checks
 
-(* pure classification *)
-let classify_sample sample =
-  let elements = detect_elements sample.band_bin_center in
-  let confidence = if List.length elements > 0 then Some 0.8 else Some 0.1 in
-  { sample; elements; confidence }
+(* lazy stream of classifications *)
+let classifications_seq () =
+  valid_samples_seq ()
+  |> Seq.map (fun sample ->
+    let elements = detect_elements sample.band_bin_center in
+    let confidence = if List.length elements > 0 then Some 0.8 else Some 0.1 in
+    { sample; elements; confidence })
 
-let rec classify_all = function
-  | [] -> []
-  | sample :: rest -> classify_sample sample :: classify_all rest
-
-(* pure recursive grouping *)
-let group_by_element classifications =
-  let rec add_to_groups element classification = function
-    | [] -> [(element, [classification])]
-    | (el, cs) :: rest when el = element -> (el, classification :: cs) :: rest
-    | group :: rest -> group :: add_to_groups element classification rest in
+(* convert lazy stream to grouped results *)
+let group_by_element_seq classifications_seq =
+  let element_map = Hashtbl.create 10 in
   
-  let process_classification acc classification =
-    let rec process_elements acc = function
-      | [] -> acc
-      | element :: rest_elements ->
-        let new_acc = add_to_groups element classification acc in
-        process_elements new_acc rest_elements in
-    process_elements acc classification.elements in
+  classifications_seq
+  |> Seq.iter (fun classification ->
+    List.iter (fun element ->
+      let existing = Hashtbl.find_opt element_map element |> Option.value ~default:[] in
+      Hashtbl.replace element_map element (classification :: existing)
+    ) classification.elements);
   
-  let rec process_all acc = function
-    | [] -> acc
-    | c :: rest -> process_all (process_classification acc c) rest in
-  
-  let grouped = process_all [] classifications in
-  List.map (fun (el, cs) -> (el, List.rev cs)) grouped
+  Hashtbl.fold (fun element classifications acc ->
+    (element, List.rev classifications) :: acc
+  ) element_map []
 
 let element_name = function
-  | H2O -> "Water_H2O" | CH4 -> "Methane_CH4" | CO2 -> "Carbon_Dioxide_CO2"
-  | NH3 -> "Ammonia_NH3" | H2S -> "Hydrogen_Sulfide_H2S" | SO2 -> "Sulfur_Dioxide_SO2"
+  | H2O -> "Water_H2O" 
+  | CH4 -> "Methane_CH4" 
+  | CO2 -> "Carbon_Dioxide_CO2"
+  | NH3 -> "Ammonia_NH3" 
+  | H2S -> "Hydrogen_Sulfide_H2S" 
+  | SO2 -> "Sulfur_Dioxide_SO2"
   | Unknown s -> s
 
 (* pure csv writing *)
@@ -276,14 +264,14 @@ let rec export_all_csvs = function
     write_element_csv group;
     export_all_csvs rest
 
-(* pure pipeline composition *)
-let run_pipeline () =
-  Printf.printf "starting SPECML pipeline...\n";
-  let files = get_lbl_files () in
-  let samples = process_files files in
-  let valid = filter_valid samples in
-  let classified = classify_all valid in
-  let grouped = group_by_element classified in
+(* Lazy pipeline composition *)
+let run_seq_pipeline () =
+  Printf.printf "starting SPECML lazy pipeline...\n";
+  let total_files = lbl_files_seq () |> Seq.length in
+  Printf.printf "filtered lbl files: %d\n" total_files;
+  
+  let classifications = classifications_seq () in
+  let grouped = group_by_element_seq classifications in
   
   Printf.printf "found elements in:\n";
   let rec print_summary = function
@@ -294,13 +282,10 @@ let run_pipeline () =
   print_summary grouped;
   
   export_all_csvs grouped;
-  Printf.printf "done!\n"
+  Printf.printf "done!!\n"
 
-(* pure debug helpers *)
-let rec take n = function
-  | [] -> []
-  | _ when n <= 0 -> []
-  | h :: t -> h :: take (n - 1) t
+(* debug helpers that work with sequences *)
+let take_seq n seq = seq |> Seq.take n |> List.of_seq
 
 let print_sample s =
   Printf.printf "%s: " s.filename;
@@ -313,11 +298,19 @@ let print_sample s =
    | _ -> Printf.printf " [no spectral data]");
   Printf.printf "\n"
 
-let rec print_samples = function
-  | [] -> ()
-  | s :: rest -> 
-    print_sample s;
-    print_samples rest
+let print_samples samples = List.iter print_sample samples
+
+(* debug first few samples *)
+let debug_seq_samples n =
+  Printf.printf "debug: first %d samples from lazy stream\n" n;
+  let samples = samples_seq () |> take_seq n in
+  print_samples samples
 
 (* compatibility *)
-let run_export = run_pipeline
+let run_pipeline = run_seq_pipeline
+let run_export = run_seq_pipeline
+
+(* expose sequences for debugging *)
+let get_samples_seq = samples_seq
+let get_valid_samples_seq = valid_samples_seq
+let get_classifications_seq = classifications_seq
