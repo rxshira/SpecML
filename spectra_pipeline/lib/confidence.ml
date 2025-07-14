@@ -155,3 +155,27 @@ let detect_elements_with_confidence bands_opt =
 
 let detect_elements bands_opt =
   detect_elements_with_confidence bands_opt |> List.map fst
+
+(* DEBUG FUNCTION HERE *)
+let debug_element_confidence bands element =
+  Printf.printf "\n=== Debugging %s ===\n" (element_name element);
+  
+  let features = List.filter (fun f -> f.element = element) spectral_database in
+  Printf.printf "Found %d features for this element\n" (List.length features);
+  
+  List.iteri (fun i feature ->
+    Printf.printf "Feature %d: center=%.1f, bandwidth=%.1f, weight=%.2f\n" 
+      i feature.center_wavelength feature.bandwidth feature.confidence_weight
+  ) features;
+  
+  let signal_quality = estimate_signal_quality bands in
+  Printf.printf "Signal quality: %.6f\n" signal_quality;
+  
+  if List.length features = 0 then (
+    Printf.printf "NO FEATURES FOUND - this is the bug!\n";
+    0.0
+  ) else (
+    let final_conf = calculate_element_confidence bands element in
+    Printf.printf "Final confidence: %.10f\n" final_conf;
+    final_conf
+  )

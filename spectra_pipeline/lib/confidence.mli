@@ -17,3 +17,7 @@ val detect_elements_with_confidence : float array option -> (element * float) li
 (* calculate confidence for a specific element *)
 
 val calculate_element_confidence : float array -> element -> float
+
+(* somthing about the confidence is fishy *)
+
+val debug_element_confidence : float array -> element -> float

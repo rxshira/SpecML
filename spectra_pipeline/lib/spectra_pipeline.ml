@@ -207,7 +207,7 @@ let group_by_element_seq classifications_seq =
   ) element_map []
 
 (* pure csv writing *)
-let write_csv_line oc classification =
+let write_csv_line oc classification target_element =
   let s = classification.sample in
   let first_band = match s.band_bin_center with
     | Some bands when Array.length bands > 0 -> string_of_float bands.(0)
@@ -216,25 +216,32 @@ let write_csv_line oc classification =
     | Some bands when Array.length bands > 0 ->
       string_of_float bands.(Array.length bands - 1)
     | _ -> "" in
+  
+  (* Find the confidence for this specific element *)
+  let element_confidence = 
+    List.find_opt (fun (el, _) -> el = target_element) classification.element_confidences
+    |> Option.map snd
+    |> Option.value ~default:0.0 in
+  
   Printf.fprintf oc "%s,%s,%s,%s,%s,%s,%s\n"
     s.filename
     (s.lines |> Option.map string_of_int |> Option.value ~default:"")
     (s.line_samples |> Option.map string_of_int |> Option.value ~default:"")
     (s.bands |> Option.map string_of_int |> Option.value ~default:"")
     first_band last_band
-    (classification.confidence |> Option.map string_of_float |> Option.value ~default:"")
+    (string_of_float element_confidence)
 
-let rec write_classifications oc = function
+let rec write_classifications oc target_element = function
   | [] -> ()
   | c :: rest ->
-    write_csv_line oc c;
-    write_classifications oc rest
+    write_csv_line oc c target_element;
+    write_classifications oc target_element rest
 
 let write_element_csv (element, classifications) =
   let filename = Printf.sprintf "element_%s.csv" (Confidence.element_name element) in
   let oc = open_out filename in
   Printf.fprintf oc "Filename,Lines,Samples,Bands,First_Band,Last_Band,Confidence\n";
-  write_classifications oc classifications;
+  write_classifications oc element classifications;
   close_out oc;
   Printf.printf "wrote %s with %d samples\n" filename (List.length classifications)
 
@@ -335,4 +342,20 @@ let debug_confidence_scores sample =
       let conf = Confidence.calculate_element_confidence bands el in
       Printf.printf "%s confidence: %.3f\n" name conf
     ) elements
+  | None -> Printf.printf "No bands\n"
+
+(* debugging confidence *)
+let debug_element_confidence_detailed sample element_name =
+  match sample.band_bin_center with
+  | Some bands ->
+    Printf.printf "\n=== Debugging %s ===\n" element_name;
+    
+    let element = match element_name with
+      | "H2O" -> Confidence.H2O
+      | "CH4" -> Confidence.CH4  
+      | "CO2" -> Confidence.CO2
+      | _ -> Confidence.H2O in
+    
+    let conf = Confidence.debug_element_confidence bands element in
+    Printf.printf "Result: %.10f\n" conf
   | None -> Printf.printf "No bands\n"
