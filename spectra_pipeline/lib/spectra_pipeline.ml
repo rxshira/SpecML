@@ -281,6 +281,7 @@ let run_seq_pipeline () =
   Printf.printf "done!!\n"
 
 (* advanced pipeline with confidence scores *)
+(* advanced pipeline with confidence scores *)
 let run_advanced_pipeline () =
   Printf.printf "starting SPECML advanced pipeline...\n";
   let total_files = lbl_files_seq () |> Seq.length in
@@ -290,24 +291,31 @@ let run_advanced_pipeline () =
   let grouped = group_by_element_seq advanced_classifications in
 
   Printf.printf "found elements in:\n";
-  List.iter (fun (el, cs) ->
-    let total_conf = List.fold_left (fun acc c ->
-      match List.find_opt (fun (e, _) -> e = el) c.element_confidences with
-      | Some (_, conf) -> acc +. conf
-      | None -> acc
-    ) 0.0 cs in
-    let avg_conf = total_conf /. float_of_int (List.length cs) in
-    Printf.printf "  %s: %d files (avg confidence: %.3f)\n" 
-      (Confidence.element_name el) 
-      (List.length cs)
-      avg_conf
-  ) grouped;
+  let rec print_element_summary = function
+    | [] -> ()
+    | (el, cs) :: rest ->
+      let total_conf = List.fold_left (fun acc c ->
+        match List.find_opt (fun (e, _) -> e = el) c.element_confidences with
+        | Some (_, conf) -> acc +. conf
+        | None -> acc
+      ) 0.0 cs in
+      let avg_conf = total_conf /. float_of_int (List.length cs) in
+      Printf.printf "  %s: %d files (avg confidence: %.3f)\n" 
+        (Confidence.element_name el) 
+        (List.length cs)
+        avg_conf;
+      print_element_summary rest in
+  print_element_summary grouped;
 
   export_all_csvs grouped;
   Printf.printf "done!!\n"
 
 
-(* debug helpers that work with sequences *)
+(******************************************)
+(*                DEBUGGING               *)
+(* some debug helper, work with sequences *)
+(*
+
 let take_seq n seq = seq |> Seq.take n |> List.of_seq
 
 let print_sample s =
@@ -371,3 +379,5 @@ let debug_element_confidence_detailed sample element_name =
     let conf = Confidence.debug_element_confidence bands element in
     Printf.printf "Result: %.10f\n" conf
   | None -> Printf.printf "No bands\n"
+
+*)
