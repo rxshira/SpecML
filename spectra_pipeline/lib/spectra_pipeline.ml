@@ -380,4 +380,18 @@ let debug_element_confidence_detailed sample element_name =
     Printf.printf "Result: %.10f\n" conf
   | None -> Printf.printf "No bands\n"
 
+(*csv file data variance debugging*)
+let debug_spectral_variance () =
+  Printf.printf "Checking if spectral data varies between files\n";
+  let samples_stream = get_valid_samples_seq () in
+  let samples = samples_stream |> Seq.take 3 |> List.of_seq in
+  List.iteri (fun i sample ->
+    Printf.printf "\nFile %d: %s\n" i sample.filename;
+    match sample.band_bin_center with
+    | Some bands ->
+      Printf.printf "  First 3 bands: %.6f, %.6f, %.6f\n" bands.(0) bands.(1) bands.(2);
+      Printf.printf "  Last 3 bands: %.6f, %.6f, %.6f\n" 
+        bands.(Array.length bands - 3) bands.(Array.length bands - 2) bands.(Array.length bands - 1)
+    | None -> Printf.printf "  No bands\n"
+  ) samples
 *)
