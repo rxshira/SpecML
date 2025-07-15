@@ -66,7 +66,7 @@ let lbl_files_seq () =
   |> List.to_seq
   |> Seq.filter (fun f ->
     let result = Filename.check_suffix f ".lbl" || Filename.check_suffix f ".qub.lbl" in
-    if result then Printf.printf "matched: %s\n" f;
+    (* if result then Printf.printf "matched: %s\n" f; *)
     result)
   |> Seq.map (Filename.concat data_dir)
 
@@ -264,7 +264,16 @@ let run_seq_pipeline () =
   let rec print_summary = function
     | [] -> ()
     | (el, cs) :: rest ->
-      Printf.printf "  %s: %d files\n" (Confidence.element_name el) (List.length cs);
+      let total_conf = List.fold_left (fun acc c ->
+        match List.find_opt (fun (e, _) -> e = el) c.element_confidences with
+        | Some (_, conf) -> acc +. conf
+        | None -> acc
+      ) 0.0 cs in
+      let avg_conf = total_conf /. float_of_int (List.length cs) in
+      Printf.printf "  %s: %d files (avg confidence: %.3f)\n"
+        (Confidence.element_name el)
+        (List.length cs)
+        avg_conf;
       print_summary rest in
   print_summary grouped;
 
@@ -281,19 +290,22 @@ let run_advanced_pipeline () =
   let grouped = group_by_element_seq advanced_classifications in
 
   Printf.printf "found elements in:\n";
-  let rec print_summary = function
-    | [] -> ()
-    | (el, cs) :: rest ->
-      Printf.printf "  %s: %d files (avg confidence: %.2f)\n" 
-        (Confidence.element_name el) 
-        (List.length cs)
-        (List.fold_left (fun acc c -> acc +. (Option.value c.confidence ~default:0.0)) 0.0 cs 
-         /. float_of_int (List.length cs));
-      print_summary rest in
-  print_summary grouped;
+  List.iter (fun (el, cs) ->
+    let total_conf = List.fold_left (fun acc c ->
+      match List.find_opt (fun (e, _) -> e = el) c.element_confidences with
+      | Some (_, conf) -> acc +. conf
+      | None -> acc
+    ) 0.0 cs in
+    let avg_conf = total_conf /. float_of_int (List.length cs) in
+    Printf.printf "  %s: %d files (avg confidence: %.3f)\n" 
+      (Confidence.element_name el) 
+      (List.length cs)
+      avg_conf
+  ) grouped;
 
   export_all_csvs grouped;
   Printf.printf "done!!\n"
+
 
 (* debug helpers that work with sequences *)
 let take_seq n seq = seq |> Seq.take n |> List.of_seq
@@ -336,7 +348,7 @@ let debug_confidence_scores sample =
   | Some bands ->
     Printf.printf "Sample has %d bands\n" (Array.length bands);
     
-    (* Test each element's confidence manually *)
+    (* test each element's confidence manually *)
     let elements = [("H2O", Confidence.H2O); ("CH4", Confidence.CH4); ("CO2", Confidence.CO2)] in
     List.iter (fun (name, el) ->
       let conf = Confidence.calculate_element_confidence bands el in

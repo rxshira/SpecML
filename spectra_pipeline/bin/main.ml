@@ -1,5 +1,5 @@
 let () =
-  Printf.printf "🌌 SPECML: Advanced Confidence Pipeline\n";
+  Printf.printf "\nSPECML:\n";
   Spectra_pipeline.run_advanced_pipeline ()
 
 (*
